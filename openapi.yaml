@@ -1,0 +1,143 @@
+openapi: 3.0.3
+info:
+  title: bridge-watch API
+  version: 0.1.0
+  description: |
+    链上风险情报 API：地址标签查询、交易解释、实体聚类（女巫检测）。
+    收款：USDC（Base 主网）；1 USDC = 100 credits。
+    鉴权：`Authorization: Bearer <API_KEY 或 付款地址>`。
+  contact:
+    name: mavisCrypto
+servers:
+  - url: https://agentsapi.top
+    description: 生产环境
+tags:
+  - name: label
+    description: 地址身份标签
+  - name: explain
+    description: 交易解释
+  - name: cluster
+    description: 实体聚类 / 女巫检测
+paths:
+  /healthz:
+    get:
+      summary: 健康检查（免鉴权）
+      responses:
+        "200":
+          description: 正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /v1/me:
+    get:
+      summary: 查询当前身份余额（免扣费）
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 余额
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    type: string
+                  remaining:
+                    type: integer
+        "401":
+          description: 无效身份
+        "402":
+          description: 额度耗尽
+  /v1/label/{address}:
+    get:
+      summary: 查询地址身份标签
+      description: 返回地址的实体标签（若在 10 万标签库中命中）
+      tags: [label]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[0-9a-fA-F]{40}$"
+      responses:
+        "200":
+          description: 标签结果（label 可能为 null）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+                  label:
+                    nullable: true
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      category:
+                        type: string
+                      confidence:
+                        type: number
+                  remaining:
+                    type: integer
+        "401":
+          description: 无效身份
+        "402":
+          description: 额度耗尽（需充值 USDC）
+  /v1/explain/{txHash}:
+    get:
+      summary: 解释一笔交易
+      description: 解码交易（状态/双方/转账/疑似跨链桥）
+      tags: [explain]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: txHash
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[0-9a-fA-F]{64}$"
+      responses:
+        "200":
+          description: 交易解释
+        "401":
+          description: 无效身份
+        "402":
+          description: 额度耗尽
+  /v1/cluster/{funder}:
+    get:
+      summary: 实体聚类（女巫检测）
+      description: 分析出资方资助的地址集合，识别疑似同一实体
+      tags: [cluster]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: funder
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[0-9a-fA-F]{40}$"
+      responses:
+        "200":
+          description: 聚类结果
+        "401":
+          description: 无效身份
+        "402":
+          description: 额度耗尽
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key 或已充值的付款地址

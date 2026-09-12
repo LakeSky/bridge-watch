@@ -1,0 +1,35 @@
+{
+  "name": "bridge-watch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-chain bridge & on-chain risk monitor (Week 1 MVP) — watches bridge/treasury contracts for fund drains and large outflows, alerts via Telegram.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts",
+    "smoke": "tsx src/smoke.ts",
+    "label": "tsx src/cli.ts label",
+    "cluster": "tsx src/cli.ts cluster",
+    "import": "tsx src/import.ts",
+    "explain": "tsx src/explain.ts",
+    "api": "tsx src/api/index.ts",
+    "track": "tsx src/track.ts",
+    "payments": "tsx src/payments.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "viem": "^2.56.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
