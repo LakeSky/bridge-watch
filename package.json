@@ -18,9 +18,11 @@
     "api": "tsx src/api/index.ts",
     "track": "tsx src/track.ts",
     "payments": "tsx src/payments.ts",
+    "mcp": "tsx src/mcp/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "viem": "^2.56.3",
