@@ -67,7 +67,7 @@ export interface AppConfig {
 }
 
 /** 把人类可读的 USDC 金额转成资产原始单位（bigint） */
-function usdcToRaw(usdc: number, decimals: number): bigint {
+export function usdcToRaw(usdc: number, decimals: number): bigint {
   // 用字符串拼接避免浮点乘法精度问题（如 0.1*10^6 之类）
   const [intPart, fracPart = ""] = usdc.toString().split(".") as [
     string,

@@ -68,7 +68,11 @@ export function loadDeposits(): Deposit[] {
   if (!existsSync(DEPOSITS_FILE)) return [];
   try {
     const parsed = JSON.parse(readFileSync(DEPOSITS_FILE, "utf-8")) as Deposit[];
-    return parsed.map((d) => ({ ...d, amount: BigInt(d.amount) }));
+    return parsed.map((d) => ({
+      ...d,
+      amount: BigInt(d.amount),
+      blockNumber: BigInt(d.blockNumber ?? 0),
+    }));
   } catch {
     return [];
   }
@@ -93,10 +97,12 @@ export function mergeDeposits(
 /** 落盘 */
 export function saveDeposits(deposits: Deposit[]): void {
   mkdirSync(DATA_DIR, { recursive: true });
+  // Deposit 含 amount / blockNumber 等 bigint 字段，原生 JSON.stringify 会抛
+  // "Do not know how to serialize a BigInt"；用 replacer 把 bigint 统一转字符串。
   writeFileSync(
     DEPOSITS_FILE,
-    JSON.stringify(
-      deposits.map((d) => ({ ...d, amount: d.amount.toString() })),
+    JSON.stringify(deposits, (_k, v) =>
+      typeof v === "bigint" ? v.toString() : v,
     ),
     "utf-8",
   );
