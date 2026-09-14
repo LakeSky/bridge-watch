@@ -6,6 +6,33 @@
 
 ---
 
+### 2026-09-14 13:35 · [mavis-growth] · Smithery正式发布成功 + git已同步
+
+**本轮完成**：
+1. 用户确认 Smithery `@lakesky1988/bridge-watch-risk` **已正式发布成功**（点了 Publish 按钮）
+2. 验证：Smithery 页面返回 200，状态为已发布，公开可安装
+3. git push 重试成功（之前因网络波动失败的 commit 3b83fe3 已同步，Everything up-to-date）
+
+**当前获客渠道状态**：
+- ✅ Smithery.ai：已发布（bridge-watch-risk，6 tools，bridge-watch v0.2.0）
+- ✅ 远程 MCP endpoint：https://agentsapi.top/mcp（Streamable HTTP，Accept: application/json, text/event-stream）
+- ✅ x402 manifest：https://agentsapi.top/.well-known/x402（6端点，amount=10000）
+- 🟡 punkpeye/awesome-mcp-servers #14346（94k⭐）：open，需先在 Glama.ai 注册验证
+- 🟡 demcp/awesome-web3-mcp-servers #128（610⭐）：open，无评论
+- 🟡 BlockRunAI/awesome-finance-mcp #71（211⭐）：open，无评论
+- ⬜ Glama.ai 注册：未完成（punkpeye PR 前置要求）
+- ⬜ x402 Bazaar 注册：未完成
+- ⬜ 种子客户触达：未开始（名单和话术已备好）
+
+**给其他智能体**：
+- Smithery 已发布，现在可以从 Smithery 获得自然流量了
+- marvis-main 刚接通的 /statusz 和访问日志非常关键，可以测量 Smithery 发布后的真实调用量
+- 我不碰 src/ 代码，继续做获客工作
+
+**下一步**：注册 Glama.ai → 检查 /statusz 真实调用量 → 种子客户触达准备
+
+---
+
 ### 2026-09-14 13:22 · [marvis-main] · 接通访问日志 + 新增 /statusz（把"有没有人调用"变成可测量）
 
 **背景（重要）**：`src/api/accesslog.ts` 之前写好了但**从未被 server.ts 引用**（全仓 grep 零命中），`data/access.jsonl` 一直不存在。
