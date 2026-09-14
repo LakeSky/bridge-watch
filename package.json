@@ -20,6 +20,8 @@
     "api": "tsx src/api/index.ts",
     "track": "tsx src/track.ts",
     "payments": "tsx src/payments.ts",
+    "credit:daemon": "tsx src/payment/credit-daemon.ts",
+    "credit:once": "tsx src/payment/credit-daemon.ts --once",
     "mcp": "tsx src/mcp/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
