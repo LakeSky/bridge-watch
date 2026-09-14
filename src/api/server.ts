@@ -8,10 +8,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { PublicClient } from "viem";
+import type { Alert } from "../types.js";
 import { LabelStore } from "../labels/store.js";
 import { clusterByFunder } from "../labels/cluster.js";
 import { explainTransaction } from "../tx/explain.js";
 import { ENDPOINT_COST, type BillingProvider } from "./billing.js";
+import { queryAlerts, getAlertStats } from "../alerts/history.js";
+import { extractCctpDeposits } from "../cctp/deposit.js";
+import { trackCctpDeposit } from "../cctp/verify.js";
+import { BASE_DOMAIN } from "../cctp/constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -28,10 +33,49 @@ export interface ApiDeps {
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 
+/**
+ * 轻量内存速率限制（按客户端 IP，固定窗口）。
+ *
+ * 作用：防止付费 API 端点被滥用、刷额度或打爆上游 RPC。
+ * 自包含实现，零外部依赖，避免多 agent 修改依赖清单引发冲突。
+ * 多实例部署时需换成 Redis 等共享存储。
+ */
+function rateLimitPerIp(opts: { windowMs: number; max: number }) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const fwd = req.headers["x-forwarded-for"];
+    const fwdStr = Array.isArray(fwd) ? fwd[0] : fwd;
+    const ip =
+      (typeof fwdStr === "string" ? fwdStr.split(",")[0]!.trim() : "") ||
+      req.socket.remoteAddress ||
+      "unknown";
+    const now = Date.now();
+    const rec = hits.get(ip);
+    if (!rec || now > rec.resetAt) {
+      hits.set(ip, { count: 1, resetAt: now + opts.windowMs });
+      next();
+      return;
+    }
+    rec.count += 1;
+    if (rec.count > opts.max) {
+      _res.status(429).json({
+        error: "Too Many Requests",
+        hint: `rate limit: ${opts.max} req/${Math.round(opts.windowMs / 1000)}s per IP`,
+      });
+      return;
+    }
+    next();
+  };
+}
+
 export function createApiServer(deps: ApiDeps): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json());
+
+  // 全局速率限制：每个 IP 每分钟最多 60 次请求，防滥用/刷 credit
+  // 注意：部署在反向代理（nginx）后时需配置 trust proxy 才能拿到真实 IP
+  app.use(rateLimitPerIp({ windowMs: 60 * 1000, max: 60 }));
 
   // 健康检查（免鉴权）
   app.get("/healthz", (_req, res) => {
@@ -162,6 +206,94 @@ export function createApiServer(deps: ApiDeps): Express {
         res
           .status(500)
           .json({ error: "cluster failed", detail: (err as Error).message });
+      }
+    },
+  );
+
+  // 告警历史查询
+  app.get("/v1/alerts", requireKey(ENDPOINT_COST.alerts), (req, res) => {
+    const address = (req.query.address as string)?.toLowerCase();
+    const kind = req.query.kind as string | undefined;
+    const severity = req.query.severity as string | undefined;
+    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+
+    const alerts = queryAlerts({
+      address,
+      kind: kind as Alert["kind"] | undefined,
+      severity: severity as Alert["severity"] | undefined,
+      since,
+      limit: Math.min(limit, 500), // 最多 500 条，防滥用
+    });
+
+    res.json({ alerts, remaining: res.locals.remaining });
+  });
+
+  // 告警统计
+  app.get(
+    "/v1/alerts/stats",
+    requireKey(ENDPOINT_COST.alertStats),
+    (req, res) => {
+      const since = req.query.since
+        ? parseInt(req.query.since as string, 10)
+        : undefined;
+      const stats = getAlertStats(since);
+      res.json({ stats, remaining: res.locals.remaining });
+    },
+  );
+
+  // CCTP 卡单追踪：输入源链 tx hash，返回跨链状态 + 是否到账
+  app.get(
+    "/v1/track/cctp/:txHash",
+    requireKey(ENDPOINT_COST.track),
+    async (req, res) => {
+      const txHash = req.params.txHash ?? "";
+      if (!TX_RE.test(txHash)) {
+        res.status(400).json({ error: "invalid tx hash" });
+        return;
+      }
+      try {
+        const receipt = await deps.client.getTransactionReceipt({
+          hash: txHash as `0x${string}`,
+        });
+        const deposits = extractCctpDeposits(
+          receipt.logs,
+          txHash as `0x${string}`,
+        );
+        if (deposits.length === 0) {
+          res.json({
+            isCctp: false,
+            message: "不是 CCTP 跨链转账（未发现 DepositForBurn 事件）",
+            remaining: res.locals.remaining,
+          });
+          return;
+        }
+
+        const results = await Promise.all(
+          deposits.map((d) =>
+            trackCctpDeposit(
+              {
+                amount: d.amount,
+                depositor: d.depositor,
+                mintRecipient: d.mintRecipient,
+                destinationDomain: d.destinationDomain,
+                destinationChain: d.destinationChain,
+                nonce: d.nonce,
+              },
+              BASE_DOMAIN,
+            ),
+          ),
+        );
+
+        res.json({
+          isCctp: true,
+          deposits: results,
+          remaining: res.locals.remaining,
+        });
+      } catch (err) {
+        res
+          .status(404)
+          .json({ error: "tx not found", detail: (err as Error).message });
       }
     },
   );

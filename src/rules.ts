@@ -98,18 +98,21 @@ export function detectDrain(input: RuleInput): Alert | null {
   };
 }
 
-/** 告警去重：同一地址 + 同一规则在冷却期内只发一次 */
+/** 告警去重：同一地址 + 同一规则在冷却期内只发一次
+ *  @param now 可选的当前时间戳，用于测试注入；默认 Date.now()
+ */
 export function dedup(
   state: WatchState,
   alerts: Alert[],
   cooldownMs: number,
+  now?: number,
 ): Alert[] {
-  const now = Date.now();
+  const t = now ?? Date.now();
   return alerts.filter((a) => {
     const key = `${a.address}:${a.kind}`;
     const last = state.lastAlertAt.get(key) ?? 0;
-    if (now - last < cooldownMs) return false;
-    state.lastAlertAt.set(key, now);
+    if (t - last < cooldownMs) return false;
+    state.lastAlertAt.set(key, t);
     return true;
   });
 }

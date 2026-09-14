@@ -47,12 +47,29 @@ async function main(): Promise<void> {
     assetSymbol: config.assetSymbol,
   });
 
-  app.listen(config.apiPort, () => {
+  const server = app.listen(config.apiPort, () => {
     console.log(`[api] 监听 http://0.0.0.0:${config.apiPort}`);
-    console.log(`[api] 端点: /healthz /v1/me /v1/label/:address /v1/explain/:txHash /v1/cluster/:funder`);
+    console.log(`[api] 端点: /healthz /v1/me /v1/label/:address /v1/explain/:txHash /v1/cluster/:funder /v1/alerts /v1/alerts/stats`);
     console.log(`[api] API key ${config.apiKeys.length} 个（各 ${config.apiCredits} credits）`);
     console.log(`[api] 收款地址 ${config.paymentAddress}；已从 ${deposits.length} 笔到账充值 ${creditedCount} 个付款地址`);
   });
+
+  // 优雅退出：SIGINT/SIGTERM 时先落盘 billing 再关闭服务
+  const shutdown = (sig: string) => {
+    console.log(`\n[api] 收到 ${sig}，正在优雅退出...`);
+    billing.flushSync();
+    server.close(() => {
+      console.log("[api] 已停止");
+      process.exit(0);
+    });
+    // 5 秒强制退出兜底
+    setTimeout(() => {
+      console.warn("[api] 强制退出（超时）");
+      process.exit(1);
+    }, 5000);
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 main().catch((err) => {

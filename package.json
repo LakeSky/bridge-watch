@@ -13,12 +13,16 @@
     "smoke": "tsx src/smoke.ts",
     "label": "tsx src/cli.ts label",
     "cluster": "tsx src/cli.ts cluster",
+    "alerts": "tsx src/cli.ts alerts",
+    "alerts:stats": "tsx src/cli.ts alerts:stats",
     "import": "tsx src/import.ts",
     "explain": "tsx src/explain.ts",
     "api": "tsx src/api/index.ts",
     "track": "tsx src/track.ts",
     "payments": "tsx src/payments.ts",
     "mcp": "tsx src/mcp/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -32,6 +36,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.0"
   }
 }

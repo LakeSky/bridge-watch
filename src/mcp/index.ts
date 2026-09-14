@@ -6,15 +6,22 @@ import { loadConfig } from "../config.js";
 import { LabelStore } from "../labels/store.js";
 import { clusterByFunder } from "../labels/cluster.js";
 import { explainTransaction } from "../tx/explain.js";
+import { queryAlerts, getAlertStats } from "../alerts/history.js";
+import { extractCctpDeposits } from "../cctp/deposit.js";
+import { trackCctpDeposit } from "../cctp/verify.js";
+import { BASE_DOMAIN } from "../cctp/constants.js";
 
 /**
  * bridge-watch MCP server（stdio 传输）。
  * 让 Claude / Cursor / ChatGPT 等 AI agent 能直接调用链上情报能力。
  *
  * 工具：
- *   get_label          地址身份标签（10 万实体标签库）
+ *   get_label           地址身份标签（10 万实体标签库）
  *   explain_transaction 交易解释
- *   detect_cluster     女巫/实体聚类
+ *   detect_cluster      女巫/实体聚类
+ *   query_alerts        查询历史告警记录
+ *   alert_stats         告警统计概览
+ *   track_cctp          CCTP 跨链卡单追踪
  */
 
 /** JSON 序列化时把 bigint 转字符串，避免 JSON.stringify 抛错 */
@@ -78,6 +85,104 @@ async function main(): Promise<void> {
         config.assetAddress,
       );
       return { content: [{ type: "text", text: jsonSafe(cluster) }] };
+    },
+  );
+
+  server.tool(
+    "query_alerts",
+    "查询历史告警记录，可按地址、规则类型、严重程度、时间范围过滤",
+    {
+      address: z.string().optional().describe("按监控地址过滤（0x 开头）"),
+      kind: z.enum(["large_outflow", "large_inflow", "balance_drain", "startup"]).optional().describe("按告警类型过滤"),
+      severity: z.enum(["info", "warn", "critical"]).optional().describe("按严重程度过滤"),
+      limit: z.number().int().min(1).max(100).default(20).optional().describe("返回条数（默认 20，最多 100）"),
+      hours: z.number().int().min(1).max(720).optional().describe("查询最近 N 小时的告警"),
+    },
+    async ({ address, kind, severity, limit, hours }) => {
+      const since = hours ? Date.now() - hours * 3600 * 1000 : undefined;
+      const alerts = queryAlerts({
+        address,
+        kind,
+        severity,
+        since,
+        limit: limit ?? 20,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: jsonSafe({ count: alerts.length, alerts }),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "alert_stats",
+    "获取告警统计概览：总数、按类型/严重程度/地址分布、最新告警时间",
+    {
+      hours: z.number().int().min(1).max(720).optional().describe("统计最近 N 小时的告警，不填则全部"),
+    },
+    async ({ hours }) => {
+      const since = hours ? Date.now() - hours * 3600 * 1000 : undefined;
+      const stats = getAlertStats(since);
+      return { content: [{ type: "text", text: jsonSafe(stats) }] };
+    },
+  );
+
+  server.tool(
+    "track_cctp",
+    "CCTP 跨链卡单追踪：输入源链交易哈希，查询这是哪笔跨链、转了多少、目标链是哪条、是否已到账。支持 Base → Ethereum 等 CCTP 支持的链。",
+    {
+      txHash: z.string().describe("源链上的交易哈希（0x 开头，66 字符）"),
+    },
+    async ({ txHash }) => {
+      const receipt = await client.getTransactionReceipt({
+        hash: txHash as `0x${string}`,
+      });
+      const deposits = extractCctpDeposits(
+        receipt.logs,
+        txHash as `0x${string}`,
+      );
+      if (deposits.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: jsonSafe({
+                isCctp: false,
+                message: "该交易不是 CCTP 跨链转账（未发现 DepositForBurn 事件）",
+              }),
+            },
+          ],
+        };
+      }
+
+      const results = await Promise.all(
+        deposits.map((d) =>
+          trackCctpDeposit(
+            {
+              amount: d.amount,
+              depositor: d.depositor,
+              mintRecipient: d.mintRecipient,
+              destinationDomain: d.destinationDomain,
+              destinationChain: d.destinationChain,
+              nonce: d.nonce,
+            },
+            BASE_DOMAIN,
+          ),
+        ),
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: jsonSafe({ isCctp: true, deposits: results }),
+          },
+        ],
+      };
     },
   );
 

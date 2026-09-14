@@ -11,6 +11,7 @@ import type { Alert, TransferEvent, WatchState } from "./types.js";
 import { detectLargeTransfers, detectDrain, dedup, type RuleInput } from "./rules.js";
 import { TelegramNotifier, formatUnits } from "./telegram.js";
 import { LabelStore } from "./labels/store.js";
+import { appendAlert } from "./alerts/history.js";
 
 /**
  * 监控主循环：轮询余额 + 拉取 Transfer 日志 → 跑规则 → 发告警。
@@ -112,10 +113,12 @@ export function createMonitor(
         const drain = detectDrain(input);
         if (drain) alerts.push(drain);
 
-        // 4. 去重 + 标签富化 + 发送
+        // 4. 去重 + 标签富化 + 发送 + 落盘历史
         const fresh = dedup(state, alerts, ALERT_COOLDOWN_MS);
         for (const a of fresh) {
-          await notifier.send(enrichAlert(a, labelStore));
+          const enriched = enrichAlert(a, labelStore);
+          await notifier.send(enriched);
+          appendAlert(enriched);
           alertCount++;
         }
       } catch (err) {

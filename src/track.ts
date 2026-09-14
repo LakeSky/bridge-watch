@@ -1,13 +1,14 @@
 import { createPublicClient, http } from "viem";
 import { loadConfig } from "./config.js";
 import { extractCctpDeposits } from "./cctp/deposit.js";
-import { getDestination } from "./cctp/destinations.js";
+import { trackCctpDeposit } from "./cctp/verify.js";
+import { BASE_DOMAIN } from "./cctp/constants.js";
 import { formatUnits } from "./telegram.js";
 
 /**
- * CCTP 卡单追踪 CLI（源链侧）。
+ * CCTP 卡单追踪 CLI。
  *   npm run track -- <0x交易哈希>
- * 识别交易是否为 CCTP 跨链转账，并报告金额/目标链/nonce。
+ * 识别交易是否为 CCTP 跨链转账，并报告金额/目标链/nonce/是否到账。
  */
 async function main(): Promise<void> {
   const txHash = process.argv[2];
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const client = createPublicClient({ transport: http(config.rpcUrl) });
 
+  console.log(`[track] 正在查询交易 ${txHash}...`);
   const receipt = await client.getTransactionReceipt({
     hash: txHash as `0x${string}`,
   });
@@ -29,26 +31,37 @@ async function main(): Promise<void> {
     return;
   }
 
-  for (const d of deposits) {
-    console.log(`[track] 发现 CCTP 跨链转账:`);
+  for (let i = 0; i < deposits.length; i++) {
+    const d = deposits[i]!;
+    console.log(`\n[track] CCTP 跨链转账 #${i + 1}:`);
     console.log(
       `  金额     : ${formatUnits(d.amount, config.assetDecimals)} ${config.assetSymbol}`,
     );
     console.log(`  发起方   : ${d.depositor}`);
     console.log(`  目标链   : ${d.destinationChain} (domain ${d.destinationDomain})`);
-    console.log(`  nonce    : ${d.nonce}`);
+    console.log(`  V1 nonce : ${d.nonce.toString()}`);
     console.log(`  收款地址 : ${d.mintRecipient}`);
 
-    // 跨链到账：已识别目标链；完整"是否到账"需解 V2 的 bytes32 nonce（Week 8）
-    const dest = getDestination(d.destinationDomain);
-    if (dest) {
-      console.log(
-        `  状态     : 源链已转出；目标链 ${dest.name} 已识别（到账验证需 V2 nonce，Week 8）`,
-      );
+    console.log(`  状态     : 正在查询目标链到账状态...`);
+    const result = await trackCctpDeposit(
+      {
+        amount: d.amount,
+        depositor: d.depositor,
+        mintRecipient: d.mintRecipient,
+        destinationDomain: d.destinationDomain,
+        destinationChain: d.destinationChain,
+        nonce: d.nonce,
+      },
+      BASE_DOMAIN,
+    );
+
+    console.log(`  V2 nonce : ${result.v2Nonce}`);
+    if (!result.destinationConfigured) {
+      console.log(`  到账状态 : ⚠️  目标链 ${result.destinationChain} 未配置到账查询`);
+    } else if (result.arrived) {
+      console.log(`  到账状态 : ✅ 已到账（目标链 ${result.destinationChain} 已 mint）`);
     } else {
-      console.log(
-        `  状态     : 源链已转出；目标链 ${d.destinationChain} 未配置到账查询`,
-      );
+      console.log(`  到账状态 : ⏳ 尚未到账（仍在跨链中，或卡单）`);
     }
   }
 }
