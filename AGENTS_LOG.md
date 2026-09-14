@@ -6,6 +6,64 @@
 
 ---
 
+### 2026-09-15 07:15 · [mavis-growth] · 🎉 第一笔USDC到账检测到! + 流量暴增405次 + push恢复
+
+**里程碑事件**：
+1. **第一笔链上 USDC 到账被检测到！**
+   - from: `0xe3Badbd4f38214b9Eae528a1a5398f6678f63fB3`
+   - amount: 5000 = **0.005 USDC**
+   - txHash: `0x0e3c8b491d33633c9f3d671813350faad1cc4db6fed658fd3ddc31063b3dfee0`
+   - block: 51313251, 时间约 2026-09-14 19:39 UTC
+   - deposits.json 已记录（creditor 累计 1 笔）
+   - ⚠️ credits-inbox.json 不存在——自动入账可能未完成，需检查
+
+2. **流量暴增**：24h **405 次调用**（上轮 202 次，+100%！翻倍！）
+   - /mcp: **179次**（+156%）
+   - /.well-known/x402: **64次**（+106%）
+   - /: 95次、/v1/label/: 17次、/statusz: 16次
+
+3. **push 恢复**：之前积压的2个 commit 已成功推送到 GitHub
+
+**bridge-qa 07:05 重要结论**：
+- x402 Bazaar 401 不是签名问题，是**架构不兼容**——Bazaar 需要 x402 Payment-Signature settle 流程，我们的直接 USDC 转账架构永远无法被收录
+- **不必再耗人力重试 Bazaar 签名**
+- 真正的 P0 = 一笔真实链上打款验证——**现在这笔到账就是验证！**
+
+**待确认**：
+- 这笔 0.005 USDC 是用户自己转的测试款，还是真实客户？
+- credits-inbox.json 不存在，需确认自动入账是否正常工作
+- billing.json 的 appliedTxs 为空，from 地址未入账
+
+---
+
+### 2026-09-15 07:05 · [bridge-qa] · 钱回路复核(196/196 全绿) + 用源码证据重写 P0 真相（x402 Bazaar=死胡同）
+
+**身份/角色**：bridge-qa（质量保障/测试补强）。本轮按 goal.md 最高优先级——独立核验"钱回路是否真能赚钱"，并用仓库源码证据把 P0 blocker 讲清楚，而非堆单测。
+
+**本轮动作（仅核验 + 重写 P0 真相，0 行功能代码、0 行新测试）**：
+1. `tsc --noEmit` → exit 0；`vitest run` → **196/196**（17 文件），与 21:47/22:15 基线一致，**无回归、无新用例**（钱回路代码本轮无改动，纯函数单测优先级已大幅降低且全模块已覆盖）。
+2. 直接读 `server.ts` 135–205 行坐实 22:15 的诊断：
+   - `/.well-known/x402` **仅作"发现"用**（6 端点 pricing + 正确 accepts），**不处理 x402 `Payment-Signature`、不接 CDP facilitator、不 settle**。
+   - 402 响应是**手写 JSON**（`server.ts:191`），**没有 `extensions.bazaar`**；`package.json` 无 `@x402/*` 依赖。
+   - 结论被源码确认：**Bazaar 收录是 settle-driven（首次成功 settle 真实付款才收录），表单 401 只是症状**。当前"直接链上 USDC 转账 + credit-daemon 监听"架构永远无法被 Bazaar 收录。
+
+**⚠️ 用源码证据重写的「钱回路真相」与真正 P0（请对应 owner 决策）**：
+- ✅ **真实赚钱闭环在代码侧已完整且被测试锁死**：`直接 USDC 转账到 payTo → credit-daemon 监听 → credits-inbox → billing.consumeInbox → 调用可用`。该链路由 `credit-daemon.test(6)+billing.inbox.test(6)+money-loop.test(5)` 锁死，**不依赖 x402/Bazaar**——机器客户只要"读 402 充值指引 → 用同地址打 USDC → 用同地址作 Bearer"即可无人值守付费。
+- 🔴 **唯一真正卡住"线上证明"的 P0 = 一笔真实链上打款**：要一锤定音"线上钱回路真能入账"，需人类用**标准钱包（MetaMask，非 CDP）**转 **0.01 USDC** 到 `0x381cdbb664608bf7b1dd4f9403a572c1c57332c2`（Base 主网）；约 5 分钟内 creditor 应写 `data/credits-inbox.json`，该地址再调用 API 自动获得 credit。@mavis-growth/@用户：这是 goal.md 第二阶段"72h 有人付钱"的最终证明，AI 无法用 CDP 自完成。**这是当前最高价值的单一人类动作。**
+- 🟠 **x402 机器发现渠道（goal.md 方向 E）当前架构不满足**：要走通"Bazaar/agent 市场发现 → 机器自动 settle 付款"，需由 `marvis-main`/`builder-0x` 决策并落地：引入 `@x402/express` 中间件 + CDP facilitator settle + 402 响应加 `extensions.bazaar`。这是**架构级改动**，bridge-qa 不擅自实施。在它落地前，Bazaar 表单路线整体是死胡同，不必再耗人力重试签名。
+- 🟡 **部署同步风险（已降级）**：本地领先 origin 2 个 commit（均为 doc-only 流量日志 `30aba40`/`76678b6`，非代码），且线上部署是 tar.gz-from-local（非 git pull），故 origin 滞后**不**阻断钱回路；但建议下次用本地 tarball 重新部署后，由人类实盘打款一次性验证线上闭环。
+
+**关键结论（按 goal.md 原则十九/十五诚实说）**：
+- 代码全绿 ≠ 能赚钱；瓶颈 100% 在**一次人类实盘打款**（证明闭环）+ **x402 架构决策**（决定能否被机器市场自动发现）。
+- 💰 **真实收入 = $0**；余额冻结 **2.035 USDC（测试金）**；Net Profit < 0（服务器成本）；**0 真实付费客户**；`deposits.json`/`credits-inbox.json` 从未生成。流量/注册/扫描 ≠ 收入。
+- 🎯 **目标未达成**，继续每小时运行。下一轮继续核验"首笔实盘打款是否发生 + Bazaar 架构决策是否落地"，持续诚实追踪真实收入。
+
+**验证状态**：
+- ✅ `tsc --noEmit` 通过（exit 0）
+- ✅ `vitest run` **196/196**（17 文件）—— 未减少任何既有用例，无回归
+
+**冲突避让**：零写入（只读核验 + 日志更新），未碰 `src/cctp/*`、`src/track.ts`（builder-0x）、`src/api/*`（marvis-main 区）、增长方向（mavis-growth 不碰 src），零冲突。
+
 ### 2026-09-14 22:07 · [mavis-growth] · 流量破200(202次) + GitHub push持续失败 + 无到账
 
 **本轮完成**：
@@ -46,6 +104,36 @@
 - ✅ `vitest run` **196/196**（17 文件）—— 未减少任何既有用例，无回归
 
 **冲突避让**：零写入（只读核验），未碰 `src/cctp/*`、`src/track.ts`（builder-0x）、`src/api/*`（marvis-main）、增长方向（mavis-growth 不碰 src），零冲突。
+
+### 2026-09-14 22:15 · [bridge-qa] · x402 Bazaar "Invalid signature" 根因诊断：表单不是真注册，listing 是 settle-driven
+
+**身份/角色**：bridge-qa（验证/测试补强）。用户主动发来 x402 Bazaar 注册截图，前端显示 **"Invalid signature"**，DevTools 显示 POST `x402-api.onrender.com/...` 返回 **401 Unauthorized**。
+
+**关键发现（Web 调研 + 源码复核）**：
+1. **Bazaar listing 是"settle-driven"，不是"form-driven"**。根据 x402 生态多篇实践记录与官方文档：
+   - x402 Bazaar / Agentic.Market 的目录**没有注册表单或提交 API**。
+   - CDP facilitator 只在**第一次成功 settle 真实付款**时自动收录资源；`verify` 或纯 manifest 扫描不会收录。
+   - 收录元数据来自 seller 在 **402 Payment Required 响应里声明的 `extensions.bazaar`**（含 `info` + `schema`）。
+   - 目录会在 30 天无付款后自动剔除，因此需要定期自 ping。
+2. **bridge-watch 当前架构不满足 Bazaar 收录条件**：
+   - `server.ts` 只在 `/.well-known/x402` 提供价格 manifest（正确但仅用于发现）。
+   - 真实收款走的是**直接链上 USDC 转账 + credit-daemon 监听入账**，从未处理 x402 的 `Payment-Signature` 请求头，也未通过 facilitator 做 settle。
+   - 402 响应是手写 JSON（`requireKey` 里），**没有 `extensions.bazaar`**。
+   - `package.json` 没有 `@x402/express` / `@x402/core` 等依赖。
+3. **因此"Invalid signature"只是症状，不是根因**。即使修好表单签名，资源也不会出现在 Bazaar；必须先让端点真正支持 x402 付款/settle 并在 402 响应里带上 bazaar 扩展。
+
+**结论与下一步（需用户/主架构 agent 决策）**：
+- **路径 A（对齐 goal.md 的 Agent→Agent 自动收款目标）**：把 `/v1/label` 等端点迁移到 `@x402/express` 中间件，处理 `Payment-Signature`，通过 CDP facilitator settle，并在 402 响应里加入 `extensions.bazaar`。这是获得 Bazaar 收录的唯一正确方式，但会改变现有直接转账充值逻辑，建议由 `marvis-main`/`builder-0x` 主导。
+- **路径 B（维持现有直接转账闭环）**：放弃 Bazaar 表单注册，专注 OpenAPI/MCP/落地页/文档获客。但 goal.md 的"机器自动发现→自动付款"目标会打折。
+- bridge-qa 建议走**路径 A**，但属于架构级改动，不擅自实施，等待决策。
+
+**冲突避让**：本轮只读调研 + 日志更新，未改 `src/*`。
+
+**22:19 用户补充的控制台证据（强化诊断）**：
+- 注册表单实际 POST 到 `https://x402-api.onrender.com/quick-register` 返回 **401 Unauthorized**（前端 `Register-*.js` 的 `ge()` fetch 拿到 401）。
+- `x402-api.onrender.com` 是 Render 免费托管的**第三方/社区/旧版 Bazaar 前端**，并非官方 Coinbase CDP Bazaar（官方目录 API 是 `api.cdp.coinbase.com/platform/v2/x402/discovery/resources`）。
+- 字体 `fonts.gstatic.com` 的 preload 警告是无关噪音，与 401 无关。
+- 结论：即便把签名修对，也只是注册到这个旧版第三方实例，不会进入真正的 CDP 驱动目录；且真正的收录是 settle-driven。表单路线整体是死胡同。
 
 ### 2026-09-14 21:07 · [mavis-growth] · 流量190次(+15%) + 无新到账 + 无代码变更
 
