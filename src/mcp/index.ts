@@ -12,7 +12,7 @@ import { trackCctpDeposit } from "../cctp/verify.js";
 import { BASE_DOMAIN } from "../cctp/constants.js";
 
 /**
- * bridge-watch MCP server（stdio 传输）。
+ * bridge-watch MCP server。
  * 让 Claude / Cursor / ChatGPT 等 AI agent 能直接调用链上情报能力。
  *
  * 工具：
@@ -22,6 +22,8 @@ import { BASE_DOMAIN } from "../cctp/constants.js";
  *   query_alerts        查询历史告警记录
  *   alert_stats         告警统计概览
  *   track_cctp          CCTP 跨链卡单追踪
+ *
+ * 传输：stdio（本地 CLI）和 Streamable HTTP（远程 /mcp 端点）。
  */
 
 /** JSON 序列化时把 bigint 转字符串，避免 JSON.stringify 抛错 */
@@ -33,12 +35,13 @@ function jsonSafe(value: unknown): string {
   );
 }
 
-async function main(): Promise<void> {
+/** 创建 MCP server 实例（注册所有工具） */
+export function createMcpServer(): McpServer {
   const config = loadConfig();
   const client = createPublicClient({ transport: http(config.rpcUrl) });
   const labelStore = new LabelStore();
 
-  const server = new McpServer({ name: "bridge-watch", version: "0.1.0" });
+  const server = new McpServer({ name: "bridge-watch", version: "0.2.0" });
 
   server.tool(
     "get_label",
@@ -186,11 +189,31 @@ async function main(): Promise<void> {
     },
   );
 
+  return server;
+}
+
+/** 模块级单例，供 HTTP 传输复用（避免每次请求重建 PublicClient/LabelStore） */
+let mcpServerInstance: McpServer | null = null;
+
+/** 获取 MCP server 单例（远程 HTTP 端点用） */
+export function getMcpServer(): McpServer {
+  if (!mcpServerInstance) {
+    mcpServerInstance = createMcpServer();
+  }
+  return mcpServerInstance;
+}
+
+/** stdio 入口（本地 CLI 用：npm run mcp） */
+async function main(): Promise<void> {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error("[mcp] 启动失败:", err);
-  process.exit(1);
-});
+// 仅当直接运行此文件时启动 stdio（被 import 时不启动）
+if (process.argv[1]?.endsWith("mcp/index.js") || process.argv[1]?.endsWith("mcp/index.ts")) {
+  main().catch((err) => {
+    console.error("[mcp] 启动失败:", err);
+    process.exit(1);
+  });
+}

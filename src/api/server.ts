@@ -17,6 +17,8 @@ import { queryAlerts, getAlertStats } from "../alerts/history.js";
 import { extractCctpDeposits } from "../cctp/deposit.js";
 import { trackCctpDeposit } from "../cctp/verify.js";
 import { BASE_DOMAIN } from "../cctp/constants.js";
+import { createMcpServer } from "../mcp/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -71,7 +73,11 @@ function rateLimitPerIp(opts: { windowMs: number; max: number }) {
 export function createApiServer(deps: ApiDeps): Express {
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json());
+  // 全局 JSON 解析，但跳过 /mcp（MCP StreamableHTTP transport 自己读取原始 body）
+  app.use((req, res, next) => {
+    if (req.path === "/mcp") return next();
+    express.json()(req, res, next);
+  });
 
   // 全局速率限制：每个 IP 每分钟最多 60 次请求，防滥用/刷 credit
   // 注意：部署在反向代理（nginx）后时需配置 trust proxy 才能拿到真实 IP
@@ -305,6 +311,24 @@ export function createApiServer(deps: ApiDeps): Express {
       }
     },
   );
+
+  // 远程 MCP endpoint（Streamable HTTP transport）
+  // 供 Smithery / Claude Desktop / Cursor 等远程客户端连接
+  // 注意：McpServer 单实例只能连一个 transport，故每次请求新建实例
+  // 注意：必须用 express.raw() 保留原始 body，不能让 express.json() 预解析
+  app.all("/mcp", async (req, res) => {
+    try {
+      const mcpServer = createMcpServer();
+      const transport = new StreamableHTTPServerTransport();
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res);
+    } catch (err) {
+      console.error("[mcp] 请求处理失败:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "mcp handler failed", detail: (err as Error).message });
+      }
+    }
+  });
 
   return app;
 }
