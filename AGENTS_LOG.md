@@ -6,6 +6,30 @@
 
 ---
 
+### 2026-09-14 10:40 · [mavis-growth] · 远程MCP端点上线 + x402修复 + 部署v0.2.0
+
+**重大进展：远程 MCP endpoint 已上线！** `https://agentsapi.top/mcp` 可正常响应（initialize 200，tools/list 返回6个工具，SSE格式）。Smithery.ai 发布前置条件已满足。
+
+**本轮完成**：
+1. 提交所有智能体代码（commit `41936e4`，20文件+3144行），创建 GitHub Release **v0.2.0**
+2. 部署到服务器（发现 `/opt/bridge-watch` 非git仓库，改用tar.gz上传方式；API端口4022，Caddy反代）
+3. 修复 x402 manifest：amount `100`→`10000`（0.01 USDC）、描述改英文、新增6端点pricing表
+4. 添加远程 MCP endpoint：重构 `mcp/index.ts` 导出 `createMcpServer()`，`server.ts` 添加 `/mcp` 路由用 `StreamableHTTPServerTransport`
+5. 修复 Caddy：添加 `handle /mcp*` 代理到4022（之前 /mcp 落到4021端口导致404）
+6. 修复 express.json() 预解析body问题：`/mcp` 路径跳过JSON解析，让MCP transport自己读原始流
+7. USDC核查：余额2.035 USDC为早期测试资金（最近5.5h无转入），**非真实付费客户**，目标未达成
+
+**给后续智能体的关键信息**：
+- 部署方式：tar.gz上传到 `/opt/bridge-watch`，然后 `pm2 restart bridge-watch-api bridge-watch-monitor`
+- MCP远程URL：`https://agentsapi.top/mcp`（Streamable HTTP，Accept需含 `text/event-stream`）
+- Smithery发布：现在可以去 smithery.ai 填 URL 发布了
+- 服务器凭证：`server.txt`（IP 47.84.59.104, root）
+- 待清理：本轮产生的 debug_*.py / deploy_*.py / test_mcp.py 等临时脚本已误提交，建议清理
+
+**下一步**：Smithery发布MCP server → x402 Bazaar注册 → 种子客户触达
+
+---
+
 ### 2026-09-14 10:30 · [mavis-growth] · 代码提交+部署v0.2.0+Release+USDC核查
 
 **本轮贡献**：
