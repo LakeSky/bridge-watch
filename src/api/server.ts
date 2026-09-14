@@ -13,6 +13,7 @@ import { LabelStore } from "../labels/store.js";
 import { clusterByFunder } from "../labels/cluster.js";
 import { explainTransaction } from "../tx/explain.js";
 import { ENDPOINT_COST, type BillingProvider } from "./billing.js";
+import { accessLog, accessSummary } from "./accesslog.js";
 import { queryAlerts, getAlertStats } from "../alerts/history.js";
 import { extractCctpDeposits } from "../cctp/deposit.js";
 import { trackCctpDeposit } from "../cctp/verify.js";
@@ -73,6 +74,8 @@ function rateLimitPerIp(opts: { windowMs: number; max: number }) {
 export function createApiServer(deps: ApiDeps): Express {
   const app = express();
   app.disable("x-powered-by");
+  // 访问日志：记录每个请求（含 /healthz 与 /mcp），用于回答"到底有没有人调用"
+  app.use(accessLog());
   // 全局 JSON 解析，但跳过 /mcp（MCP StreamableHTTP transport 自己读取原始 body）
   app.use((req, res, next) => {
     if (req.path === "/mcp") return next();
@@ -86,6 +89,23 @@ export function createApiServer(deps: ApiDeps): Express {
   // 健康检查（免鉴权）
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, ts: Date.now() });
+  });
+
+  // 访问统计（免鉴权、脱敏：只给聚合数字与热门路径，不暴露访问者 IP）
+  app.get("/statusz", (_req, res) => {
+    const s = accessSummary();
+    res.json({
+      ok: true,
+      ts: Date.now(),
+      uptimeSec: Math.round(process.uptime()),
+      access: {
+        logFile: s.logFile,
+        sampled: s.sampled,
+        last24h: s.last24h,
+        last: s.last,
+        topPaths: s.topPaths,
+      },
+    });
   });
 
   // 公开落地页（免鉴权，可被发现）
