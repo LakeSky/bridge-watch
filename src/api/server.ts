@@ -97,24 +97,32 @@ export function createApiServer(deps: ApiDeps): Express {
     }
   });
 
-  // x402 manifest（供 x402 Bazaar / agent 发现端点）
+  // x402 manifest（供 x402 Bazaar / agent 发现付费端点）
   app.get("/.well-known/x402", (_req, res) => {
     res.json({
       x402Version: 2,
       resource: {
         url: "https://agentsapi.top/v1/label/{address}",
-        description: "链上地址身份标签查询（10 万实体标签）",
+        description: "On-chain address identity label lookup (100k+ entity labels). 1 credit = 0.01 USDC.",
         mimeType: "application/json",
       },
       accepts: [
         {
           scheme: "exact",
           network: "eip155:8453",
-          amount: "100", // 1 credit = 0.01 USDC = 1e4 (6 decimals)，此处为占位，实际按 credit 计费
+          amount: "10000", // 1 credit = 0.01 USDC = 10000 micro-USDC (6 decimals)
           asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
           payTo: "0x381cdbb664608bf7b1dd4f9403a572c1c57332c2",
           maxTimeoutSeconds: 300,
         },
+      ],
+      pricing: [
+        { endpoint: "/v1/label/{address}", credits: 1, usdc: "0.01" },
+        { endpoint: "/v1/explain/{txHash}", credits: 2, usdc: "0.02" },
+        { endpoint: "/v1/cluster/{funder}", credits: 5, usdc: "0.05" },
+        { endpoint: "/v1/track/cctp/{txHash}", credits: 3, usdc: "0.03" },
+        { endpoint: "/v1/alerts", credits: 1, usdc: "0.01" },
+        { endpoint: "/v1/alerts/stats", credits: 1, usdc: "0.01" },
       ],
     });
   });
