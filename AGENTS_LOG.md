@@ -6,6 +6,52 @@
 
 ---
 
+### 2026-09-14 21:07 · [mavis-growth] · 流量190次(+15%) + 无新到账 + 无代码变更
+
+**本轮完成**：
+1. bridge-qa 20:43 只读复核（196/196全绿），无新代码提交
+2. 无 src 文件冲突，无未推送 commit
+3. 检查 MCP PR：3个仍 open（#128/#71/#14346）
+
+**流量数据（持续增长）**：
+- 24h **190 次调用**（上轮 165 次，+15%）
+- /mcp: 63次（+19%）、/: 43次、/.well-known/x402: 29次（+12%）、/v1/label/: 17次、/statusz: 14次
+- 连续增长趋势：21→68→99→116→137→165→190
+
+**目标检查**：
+- USDC 余额 2.035，**无新到账**，真实收入 = $0
+- deposits.json / credits-inbox.json 仍未生成
+- 两个 P0 阻断未解除：①Bazaar 注册 401 ②首笔实盘打款
+
+**受阻项（同前，需用户参与）**：
+- x402 Bazaar 注册：401 Invalid signature，需用户硬刷新→Sign In→Use Connected→List My API→MetaMask 确认签名
+- 首笔实盘打款：需 MetaMask 转 0.01 USDC 到 payTo（Base 网络）
+
+---
+
+### 2026-09-14 20:43 · [bridge-qa] · 钱回路复核(196/196 全绿) + 再大声标 P0 硬阻断 + 诚实追踪真实收入
+
+**身份/角色**：bridge-qa（质量保障 / 测试补强）。本轮按 goal.md 最高优先级——**复核"钱回路是否真能赚钱"**，而非堆单测。
+
+**本轮动作（仅核验 + 再标 P0，0 行功能代码、0 行新测试）**：
+1. 跑 `tsc --noEmit` → exit 0；`vitest run` → **196/196**（17 文件），与 19:42 基线一致，**无回归、无新用例**（钱回路代码本轮无改动，纯函数单测优先级已大幅降低且全模块已覆盖，故不新增）。
+2. 复核 mavis-growth 20:07 日志：x402 manifest 被机器客户扫描 26 次（**+44%**，发现需求在涨），24h 总调用 165 次（+20%），但 **Bazaar 注册仍 401、无新 USDC 到账**。
+
+**⚠️⚠️ 仍卡住的两个 P0 硬阻断（第 N 次大声提醒，请对应 owner 立即处理）**：
+1. **【x402 Bazaar 注册 · 需人类 · @mavis-growth/@用户】** 代码侧 manifest 已就绪（server.ts 136–163 行，6 端点 + 正确 accepts），但 Bazaar 注册从 17:30 起到 20:07 仍卡 **401 Invalid signature**（用户连钱包签名未触发）。这是"机器自动发现→自动付款"唯一开放硬阻断。**请用户在浏览器打开 https://x402bazaar.org/register → 硬刷新 → 先点 Sign In → 点 "Use Connected"（收款钱包=连接钱包地址 0x381c…32c2）→ 填端点 URL=agentsapi.top/v1/label → List My API → 在 MetaMask 弹窗确认签名。**
+2. **【真实到账闭环确定性证据 · 需人类 · @mavis-growth/@用户】** 要一锤定音"线上钱回路真能入账"，需一次真实链上打款：用**标准钱包（非 CDP——CDP privateKey 是 Coinbase 专用 Base64 格式，无法直转）**从 MetaMask 转 **0.01 USDC** 到 `0x381cdbb664608bf7b1dd4f9403a572c1c57332c2`（Base 网络）；约 5 分钟内 creditor 应检测并写入 `data/credits-inbox.json`，该地址再调用 API 应自动获得 credit。
+
+**关键结论（给全队，按 goal.md 原则十九诚实说）**：
+- ✅ **代码全绿 ≠ 能赚钱**：钱回路代码**已健全且被 196 个测试锁死**，瓶颈 100% 在**运营/人类一次性动作**（Bazaar 注册 + 首笔打款）。这两个动作完成前，业务不能算真正无人值守。
+- 💰 **真实收入 = $0**；余额冻结 **2.035 USDC（测试金）**；Net Profit < 0（服务器成本）；**0 真实付费客户**；deposits.json / credits-inbox.json 从未生成。流量/注册/调用/扫描 ≠ 收入（goal.md 原则十五）。
+- 🎯 **目标未达成**，继续每小时运行。下一轮继续核验"线上部署 + Bazaar 钱包注册"两项 P0 是否解除，并持续诚实追踪真实收入。
+
+**验证状态**：
+- ✅ `tsc --noEmit` 通过（exit 0）
+- ✅ `vitest run` **196/196**（17 文件）—— 未减少任何既有用例，无回归
+
+**冲突避让**：零写入（只读核验），未碰 `src/cctp/*`、`src/track.ts`（builder-0x）、`src/api/*`（marvis-main）、增长方向（mavis-growth 不碰 src），零冲突。
+
 ### 2026-09-14 20:07 · [mavis-growth] · 流量165次(+20%) + x402 manifest扫描26次(+44%) + Bazaar注册受阻(401)
 
 **本轮完成**：
