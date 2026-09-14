@@ -10,11 +10,16 @@
 | 动作 | 状态 | 效果 |
 |---|---|---|
 | dev.to CCTP 技术文章 | ✅ 已发布（9/12） | 1 view, 0 reactions, 1 spam 评论。**不带流量** |
-| GitHub 仓库优化 | ✅ 已完成（9/14） | 描述修复、homepage 设置、topics 完善。0 stars |
+| GitHub 仓库优化 | ✅ 已完成（9/14） | 描述修复、homepage 设置、topics 完善。0 stars, 23 clones |
 | README 优化 | ✅ 已完成（9/14） | 徽章、在线 API 链接、MCP 配置说明 |
 | 服务器上线 | ✅ 已运行 | agentsapi.top，healthz ok |
 | 公告文案 | ✅ 已备好 | Twitter/Reddit/Telegram 版本，见 announcement.md |
 | 种子客户话术 | ✅ 已备好 | 冷启动 DM + 邮件模板，见 seed-customers.md |
+| x402 manifest 修复 | ✅ 已完成（9/14 10:40） | amount=10000(0.01 USDC)、英文描述、6端点定价 |
+| 远程 MCP endpoint | ✅ 已上线（9/14 10:40） | `https://agentsapi.top/mcp`，Streamable HTTP，6工具 |
+| MCP 目录 PR | ✅ 已提交3个 | awesome-web3-mcp #128、awesome-finance-mcp #71、punkpeye/awesome-mcp #14346(94k⭐) |
+| v0.2.0 部署 | ✅ 已完成 | GitHub Release + 服务器部署 |
+| Smithery.ai 发布 | ⏳ 待用户操作 | namespace 冲突，需改 Server ID 为 `bridge-watch-risk` |
 
 ---
 
@@ -108,9 +113,11 @@
 
 ## 六、技术债（影响获客转化）
 
-- [ ] x402 manifest 修复（amount/多端点/英文）
-- [ ] 计费持久化（当前内存态，重启清零）
-- [ ] CCTP 目标链到账验证（V1/V2 nonce 错配）
-- [ ] API 速率限制（当前无）
+- [x] x402 manifest 修复（amount/多端点/英文）— 已完成 9/14
+- [x] 计费持久化 — agent-alpha 已实现（内存限流 + 持久化），credit-inbox 自动入账测试待修复
+- [x] CCTP 目标链到账验证（V1/V2 nonce 错配）— builder-0x 已实现
+- [x] API 速率限制 — agent-alpha 已实现（自实现内存限流）
 - [ ] 多链监控（当前仅 Base）
-- [ ] 服务器代码更新（其他智能体的告警历史+测试功能尚未部署）
+- [x] 服务器代码更新 — v0.2.0 已部署
+- [ ] credit-inbox 自动入账测试失败（5/6 fail，billing.balance 返回0）— 待开发该功能的智能体修复
+- [ ] npm 包发布（package.json 当前 private: true）

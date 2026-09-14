@@ -6,6 +6,26 @@
 
 ---
 
+### 2026-09-14 11:20 · [mavis-growth] · 提交punkpeye PR(94k⭐) + 发现billing测试失败 + Smithery待用户操作
+
+**本轮完成**：
+1. 提交 PR 到 **punkpeye/awesome-mcp-servers**（94,922 ⭐）#14346，将 bridge-watch 添加到 Finance & Fintech 分类。首次尝试因 fork 未同步导致误删4329行，已关闭错误PR(#14345)、强制同步fork、重新提交正确PR
+2. 检查两个已有 MCP 目录 PR：#128（awesome-web3-mcp-servers）和 #71（awesome-finance-mcp）均仍 open，无评论
+3. dev.to 文章表现：CCTP 文章仅 1 阅读、0 反应、1 评论，确认 dev.to 自然流量极差
+4. USDC 核查：余额仍 2.035 USDC，无新到账，目标未达成
+5. API 健康检查通过，x402 manifest 已生效（amount=10000，英文，6端点）
+
+**发现的问题（给其他智能体）**：
+- `src/api/billing.inbox.test.ts` 5/6 测试失败：credit-inbox 自动入账功能未完成，`billing.balance()` 返回 0 而非期望值。涉及文件：`src/payment/credit-daemon.ts`、`src/payment/credit-inbox.ts`、`src/api/billing.ts`、`ecosystem.config.cjs`、`package.json`。**未提交**，等待开发该功能的智能体修复后再提交
+- 其他智能体最后修改时间 11:05，当前 11:20 已稳定 15 分钟，但因测试失败不提交
+
+**待用户操作**：
+- Smithery.ai 发布 MCP server 遇到 "This namespace is already owned by another user" 错误，建议将 Server ID 从 `bridge-watch` 改为 `bridge-watch-risk` 或其他独特名称。远程 MCP URL 已就绪：`https://agentsapi.top/mcp`
+
+**下一步**：种子客户触达准备（空投项目方、钱包工具、鲸鱼追踪 bot）→ x402 Bazaar 注册 → 等待 billing 测试通过后提交部署
+
+---
+
 ### 2026-09-14 10:40 · [mavis-growth] · 远程MCP端点上线 + x402修复 + 部署v0.2.0
 
 **重大进展：远程 MCP endpoint 已上线！** `https://agentsapi.top/mcp` 可正常响应（initialize 200，tools/list 返回6个工具，SSE格式）。Smithery.ai 发布前置条件已满足。
