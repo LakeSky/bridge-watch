@@ -45,6 +45,8 @@ async function main(): Promise<void> {
     assetAddress: config.assetAddress,
     assetDecimals: config.assetDecimals,
     assetSymbol: config.assetSymbol,
+    payTo: config.paymentAddress,
+    creditPerUsdc: config.creditPerUsdc,
   });
 
   const server = app.listen(config.apiPort, () => {

@@ -32,6 +32,10 @@ export interface ApiDeps {
   assetAddress: `0x${string}`;
   assetDecimals: number;
   assetSymbol: string;
+  /** USDC 收款地址（充值指引与 x402 manifest 共用同一来源，避免两处硬编码漂移） */
+  payTo?: string;
+  /** 1 USDC 兑换多少 credits（用于在 402 里给出"充多少能用多少次"的换算） */
+  creditPerUsdc?: number;
 }
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -75,6 +79,10 @@ function rateLimitPerIp(opts: { windowMs: number; max: number }) {
 export function createApiServer(deps: ApiDeps): Express {
   const app = express();
   app.disable("x-powered-by");
+  // 收款地址单一来源：manifest / 402 充值指引 / 落地页共用，避免多处硬编码漂移
+  const payTo = deps.payTo ?? "0x381cdbb664608bf7b1dd4f9403a572c1c57332c2";
+  // 对外域名（用于在错误响应里给出可点击的 x402 / 文档地址），可用环境变量覆盖
+  const baseUrl = process.env.PUBLIC_BASE_URL ?? "https://agentsapi.top";
   // 访问日志：记录每个请求（含 /healthz 与 /mcp），用于回答"到底有没有人调用"
   app.use(accessLog());
   // 全局 JSON 解析，但跳过 /mcp（MCP StreamableHTTP transport 自己读取原始 body）
@@ -111,7 +119,7 @@ export function createApiServer(deps: ApiDeps): Express {
 
   // 公开落地页（免鉴权，可被发现）
   app.get("/", (_req, res) => {
-    res.type("html").send(LANDING_HTML);
+    res.type("html").send(landingHtml(payTo));
   });
 
   // OpenAPI 规范（免鉴权，供市场/程序发现）
@@ -139,7 +147,7 @@ export function createApiServer(deps: ApiDeps): Express {
           network: "eip155:8453",
           amount: "10000", // 1 credit = 0.01 USDC = 10000 micro-USDC (6 decimals)
           asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-          payTo: "0x381cdbb664608bf7b1dd4f9403a572c1c57332c2",
+          payTo,
           maxTimeoutSeconds: 300,
         },
       ],
@@ -163,17 +171,37 @@ export function createApiServer(deps: ApiDeps): Express {
       const key = auth.startsWith("Bearer ") ? auth.slice(7).toLowerCase() : "";
       // 首次调用免费额度：陌生调用方零成本跑通第一次，再决定是否充值（FREE_TIER_CREDITS=0 可关闭）
       if (key) ensureFreeTier(deps.billing, key);
-      const isKnown = deps.validKeys.has(key) || deps.billing.balance(key) > 0;
+      // 已知身份 = 预置 key / 曾发放过免费额度（余额已用尽也算）/ 有过到账充值
+      const isKnown =
+        deps.validKeys.has(key) ||
+        deps.billing.known?.(key) === true ||
+        deps.billing.balance(key) > 0;
       if (!key || !isKnown) {
-        res.status(401).json({ error: "invalid or missing API key" });
+        res.status(401).json({
+          error: "invalid or missing API key",
+          hint: "在 Authorization 头带上任意非空 Bearer 身份（推荐直接用自己的钱包地址），新身份首次调用会自动获得免费额度",
+          docs: `${baseUrl}/`,
+        });
         return;
       }
       const charged = await deps.billing.charge(key, cost);
       if (!charged.ok) {
+        // 关键转化点：余额耗尽 ≠ 身份无效。
+        // 这里必须给出可直接执行的充值路径，否则有意付费的调用方会收到 401「key 无效」而误以为服务坏了。
         res.status(402).json({
           error: "Payment Required: credits exhausted",
           remaining: charged.remaining,
-          hint: `send USDC to ${deps.assetSymbol} payment address to recharge`,
+          recharge: {
+            payTo,
+            chain: "base",
+            network: "eip155:8453",
+            asset: deps.assetAddress,
+            symbol: deps.assetSymbol,
+            creditPerUsdc: deps.creditPerUsdc ?? 100,
+            how: `向 ${payTo} 转入 ${deps.assetSymbol}（Base 主网），并以同一个地址作为 Bearer 身份继续调用；链上监听确认后约 1 分钟自动入账`,
+            x402: `${baseUrl}/.well-known/x402`,
+            docs: `${baseUrl}/`,
+          },
         });
         return;
       }
@@ -356,7 +384,9 @@ export function createApiServer(deps: ApiDeps): Express {
   return app;
 }
 
-const LANDING_HTML = `<!doctype html>
+/** 公开落地页（收款地址由调用方注入，避免与 manifest 硬编码漂移） */
+function landingHtml(payTo: string): string {
+  return `<!doctype html>
 <html lang="zh">
 <head>
   <meta charset="utf-8" />
@@ -385,14 +415,19 @@ const LANDING_HTML = `<!doctype html>
   <h2>定价</h2>
   <p>USDC 充值，<strong>1 USDC = 100 credits</strong>（label 查询约 $0.01/次）。</p>
 
+  <h2>免费试用</h2>
+  <p><strong>无需注册、无需付款</strong>：任意新身份（推荐直接用自己的钱包地址）首次调用即自动获得 <strong>10 credits</strong> 的免费额度，够跑通 10 次地址查询。额度用完后接口返回 <code>402 Payment Required</code> 并附充值指引。</p>
+
   <h2>快速开始</h2>
   <pre>curl -H "Authorization: Bearer &lt;你的地址或API key&gt;" \\
   https://agentsapi.top/v1/label/0x0000000000001ff3684f28c67538d4d072c22734</pre>
 
-  <h2>付款</h2>
-  <p>发送 USDC（Base 主网）到收款地址 <code>0x381cdbb664608bf7b1dd4f9403a572c1c57332c2</code>，到账后即可用你的地址调 API。</p>
+  <h2>付款 / 充值</h2>
+  <p>发送 USDC（Base 主网）到收款地址 <code>${payTo}</code>，<strong>并用同一个地址作为 Bearer 身份调用</strong>——链上监听确认到账后约 1 分钟自动入账。</p>
+  <p>程序化发现：<a href="/.well-known/x402">/.well-known/x402</a>（x402 定价 manifest）。</p>
 
   <p><a href="/openapi.yaml">OpenAPI 规范</a> · <a href="/healthz">健康检查</a></p>
 </body>
 </html>`;
+}
 

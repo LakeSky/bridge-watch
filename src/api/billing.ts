@@ -27,6 +27,15 @@ export interface ChargeResult {
 export interface BillingProvider {
   charge(apiKey: string, cost: number): Promise<ChargeResult>;
   balance(key: string): number;
+  /**
+   * 该身份是否已被系统认识（曾 seed / 曾发放免费额度 / 曾到账充值）。
+   *
+   * 与 balance 的区别：known 在余额为 0（甚至用尽）时仍为 true。
+   * 用于区分两种截然不同的情形：
+   *   - 完全陌生的 key → 401（身份无效，应引导获取免费额度）
+   *   - 认识的 key 但余额耗尽 → 402（应引导充值，而不是说"key 无效"）
+   */
+  known?(key: string): boolean;
 }
 
 interface BillingData {
@@ -155,6 +164,19 @@ export class LocalBilling implements BillingProvider {
   balance(key: string): number {
     this.consumeInbox();
     return this.data.balances[key.toLowerCase()] ?? 0;
+  }
+
+  /**
+   * 身份是否已被认识。
+   *
+   * 判定依据是"账本里有没有这个条目"（balances 的 key 集合），而不是余额是否 > 0：
+   * 免费额度用尽的 key 余额为 0，但它仍应被识别为"已知身份"，从而收到 402 充值指引，
+   * 而不是 401"key 无效"——后者会让真实付费意愿的用户以为服务坏了。
+   */
+  known(key: string): boolean {
+    this.consumeInbox();
+    const k = key.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(this.data.balances, k);
   }
 
   async charge(key: string, cost: number): Promise<ChargeResult> {

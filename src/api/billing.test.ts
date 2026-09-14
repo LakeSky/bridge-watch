@@ -94,6 +94,22 @@ describe("LocalBilling", () => {
     expect(result.remaining).toBe(0);
   });
 
+  it("known: 未接触过的身份为 false，seed 后为 true", () => {
+    const billing = createBilling();
+    expect(billing.known("never-seen-key")).toBe(false);
+    billing.seed(key1, 100);
+    expect(billing.known(key1)).toBe(true);
+    expect(billing.known(key1.toUpperCase())).toBe(true);
+  });
+
+  it("known: 余额扣到 0 后仍为 true（用于区分 402 与 401）", async () => {
+    const billing = createBilling();
+    billing.seed(key1, 10);
+    await billing.charge(key1, 10);
+    expect(billing.balance(key1)).toBe(0);
+    expect(billing.known(key1)).toBe(true);
+  });
+
   it("key 大小写不敏感", () => {
     const billing = createBilling();
     billing.seed("Test-Key-ABC", 1000);
