@@ -36,8 +36,8 @@ function parseArgs(argv: string[]): { once: boolean; intervalSec: number } {
   return { once, intervalSec };
 }
 
-/** 单轮扫描：返回本轮新增到账笔数 */
-async function tick(): Promise<number> {
+/** 单轮扫描：返回本轮新增到账笔数（异步，可被测试直接驱动） */
+export async function tick(): Promise<number> {
   const config = loadConfig();
   const client = createPublicClient({ transport: http(config.rpcUrl) });
   const unit = 10n ** BigInt(config.assetDecimals);
@@ -103,7 +103,14 @@ async function main(): Promise<void> {
   } while (!stopping);
 }
 
-main().catch((err) => {
-  console.error("[credit-daemon] 致命错误:", err);
-  process.exit(1);
-});
+// 仅当以脚本方式直接运行时才启动守护进程；被测试/其他模块 import 时不自动运行，
+// 避免 import 即触发扫描循环（卡死测试 / 污染环境）。
+const isMain =
+  process.argv[1] &&
+  import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  main().catch((err) => {
+    console.error("[credit-daemon] 致命错误:", err);
+    process.exit(1);
+  });
+}
