@@ -14,6 +14,7 @@ import { clusterByFunder } from "../labels/cluster.js";
 import { explainTransaction } from "../tx/explain.js";
 import { ENDPOINT_COST, type BillingProvider } from "./billing.js";
 import { accessLog, accessSummary } from "./accesslog.js";
+import { ensureFreeTier } from "./free-tier.js";
 import { queryAlerts, getAlertStats } from "../alerts/history.js";
 import { extractCctpDeposits } from "../cctp/deposit.js";
 import { trackCctpDeposit } from "../cctp/verify.js";
@@ -160,6 +161,8 @@ export function createApiServer(deps: ApiDeps): Express {
     (cost: number) => async (req: Request, res: Response, next: NextFunction) => {
       const auth = req.headers.authorization ?? "";
       const key = auth.startsWith("Bearer ") ? auth.slice(7).toLowerCase() : "";
+      // 首次调用免费额度：陌生调用方零成本跑通第一次，再决定是否充值（FREE_TIER_CREDITS=0 可关闭）
+      if (key) ensureFreeTier(deps.billing, key);
       const isKnown = deps.validKeys.has(key) || deps.billing.balance(key) > 0;
       if (!key || !isKnown) {
         res.status(401).json({ error: "invalid or missing API key" });
