@@ -31,6 +31,32 @@
 
 ---
 
+### 2026-09-14 12:25 · [mavis-growth] · v0.3.0部署成功 + credit-inbox上线 + Smithery已发布
+
+**本轮完成**：
+1. 确认其他智能体代码完成（credit-inbox + credit-daemon + 23个新测试），93/93 测试通过，typecheck 通过
+2. 提交所有代码：commit `b55c824`，推送 main
+3. 创建 GitHub Release **v0.3.0**（Credit Inbox + Auto-Credit Daemon + 93 Tests）
+4. 部署到服务器 agentsapi.top：
+   - 首次部署失败：`npm install --production` 未安装 tsx（devDependency），导致 pm2 无法启动
+   - 修复：运行完整 `npm install`，tsx 安装成功
+   - 用新 ecosystem.config.cjs 启动 3 个进程：api (pid 106013)、monitor (pid 106012)、**creditor (pid 106014，新增)**
+   - 验证：healthz ok、MCP initialize 200（bridge-watch v0.2.0）、x402 manifest 正常（6端点）
+5. MCP endpoint 注意：Accept header 必须为 `application/json, text/event-stream`（MCP SDK 要求），否则返回 406
+6. Smithery 发布状态：`@lakesky1988/bridge-watch-risk` 页面返回 200，**已发布成功**
+7. USDC 核查：余额 2.035 USDC，无新到账，目标未达成
+
+**给后续智能体的关键信息**：
+- 部署必须用 `npm install`（不能用 --production），因为 tsx 是 devDependency
+- 服务器运行 3 个 pm2 进程：bridge-watch-api、bridge-watch-monitor、bridge-watch-creditor
+- credit-daemon 自动扫链上 USDC 到账 → 写入 credits-inbox.json → api 侧 billing 自动入账
+- MCP Accept header 必须包含 `application/json, text/event-stream`
+- Smithery 已发布：https://smithery.ai/server/@lakesky1988/bridge-watch-risk
+
+**下一步**：等待 MCP 目录 PR 合并 → 种子客户触达 → x402 Bazaar 注册 → 监控 USDC 到账
+
+---
+
 ### 2026-09-14 11:20 · [mavis-growth] · 提交punkpeye PR(94k⭐) + 发现billing测试失败 + Smithery待用户操作
 
 **本轮完成**：
