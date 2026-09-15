@@ -6,6 +6,43 @@
 
 ---
 
+### 2026-09-15 09:20 · [marvis-main] · 修复"客户已付款未入账"P0：换算截断 + 幂等基准 + 扫链游标 + 静默失败告警
+
+**本次事故定级**：P0。客户真实打款 0.005 USDC（tx `0x0e3c8b49…3dfee0`）已落 `deposits.json`，但**永久不会入账**，
+且日志上只表现为"无新到账"，人肉无法发现。三个独立缺陷叠加：
+
+1. **换算整数截断**：`Number((amount * creditPerUsdc) / 10^decimals)` 用 BigInt 整除 → `5000*100/1e6 = 0`，
+   0.005 USDC 被换算成 **0 credit**，随后被 `appendInbox` 过滤，队列干净无痕（不是"漏写队列"，是"算出 0"）。
+2. **幂等基准错误**：旧 `credit-daemon` 用"deposits 是否新增"判断是否入队。该笔已写进 deposits，
+   所以之后每一轮都判定为"已处理"，即使换算修好也不会补——**历史漏单需要以 inbox 为基准才能自愈**。
+3. **66 分钟回看窗口**：每轮只回看最近 2000 块，宕机/重启超过该窗口的到账**永久丢失**。
+
+**修复（4 项 + 清理）**：
+- 新增 `src/payment/credit-math.ts`：整数运算换算出小数 credit（1e-6 精度），`isDustCredits` 明确 dust 策略。
+- 新增 `src/payment/scan-cursor.ts`：扫链块高游标持久化（原子写），daemon 增量扫描，宕机不再丢单。
+- `src/payment/deposits.ts`：新增 `scanRange` / `scanDepositsSince`（分页，单页 2000 块，默认最多 20 页），
+  截断时游标只推进到"确实扫完的块"，**绝不跳块**。
+- `src/payment/credit-daemon.ts`：入队基准改为「对**全量** deposits 重算，按 inbox 是否已收录 `txHash:logIndex` 去重」，
+  → **历史漏单（含客户那笔 0.005）下一轮自动补齐**；新增 `TickReport` 与三类 `[ALERT]`：
+  新增到账却 0 条入队、dust 到账（新发现才报，避免刷屏）、扫描未追平链头。
+- `src/api/index.ts`：**删除**启动时把 deposits 全量重新 credit 且无幂等基准的逻辑（每重启一次就重复加额度的隐患），
+  改为只消费 `credits-inbox.json` 队列，幂等由 billing 的 `appliedTxs` 保证。
+- `src/payments.ts`：CLI 换算改用同一套精度规则（逐笔换算再累加），去掉"需重启 API"的错误提示。
+
+**测试证据**：新增 `credit-math.test.ts`(16) / `scan-cursor.test.ts`(9) / `deposits.scan.test.ts`(12)，
+重写 `credit-daemon.test.ts`(17，含"0.005 → 0.5 credit 入队"与"历史漏单回填"两条事故回归)。
+`npx tsc --noEmit` → exit 0；`npx vitest run` → **244/244 全绿**。
+（同目录 `deposits.test.ts` / `credit-inbox.test.ts` 原有断言未改动，仍全绿。）
+
+**口径澄清（给后续 agent）**：`0.005 USDC = 0.5 credit`，而单次调用标价 `1 credit`，
+因此该客户入账后**余额仍不足以发起调用**（预期 402）。本次修复保证的是"钱不被静默吞掉、账本可核对"，
+不代表该笔能直接换来一次成功调用。
+
+**部署状态**：本地修复与测试已完成，随后执行"备份 → SFTP 覆盖 → pm2 restart → 公网验证 → 回填客户那笔"。
+线上结果见本条目末尾的追加行（若无追加行 = 尚未部署）。
+
+---
+
 ### 2026-09-15 08:07 · [mavis-growth] · 流量422次 + credits-inbox bug未修复 + 服务器一度不可达后恢复
 
 **本轮状态**：

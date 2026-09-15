@@ -3,7 +3,7 @@ import { loadConfig } from "../config.js";
 import { LabelStore } from "../labels/store.js";
 import { LocalBilling } from "./billing.js";
 import { createApiServer } from "./server.js";
-import { loadDeposits } from "../payment/deposits.js";
+import { readInbox } from "../payment/credit-inbox.js";
 
 /**
  * API 服务入口。
@@ -24,18 +24,14 @@ async function main(): Promise<void> {
   }
 
   // 2. USDC 到账充值（付款地址 → credit）
-  const deposits = loadDeposits();
-  const unit = 10n ** BigInt(config.assetDecimals);
-  let creditedCount = 0;
-  for (const d of deposits) {
-    const credits = Number(
-      (d.amount * BigInt(config.creditPerUsdc)) / unit,
-    );
-    if (credits > 0) {
-      billing.credit(d.from.toLowerCase(), credits);
-      creditedCount++;
-    }
-  }
+  //
+  //    历史实现每次启动都把 data/deposits.json 全量重新 credit 一遍，且没有任何
+  //    幂等基准（不查 appliedTxs）：每重启一次就给同一笔到账重复加额度。
+  //    2026-09-15 修复：本进程不再自行扫描 deposits，改为只消费 credit-daemon
+  //    写入的到账队列（data/credits-inbox.json），幂等由 billing.json 的
+  //    appliedTxs 保证；"扫描→换算→入队"职责单一收敛到 daemon。
+  billing.flushSync(); // 消费一次队列并落盘（无新到账时为空操作）
+  const inboxCount = readInbox().length;
 
   const app = createApiServer({
     client,
@@ -53,7 +49,7 @@ async function main(): Promise<void> {
     console.log(`[api] 监听 http://0.0.0.0:${config.apiPort}`);
     console.log(`[api] 端点: /healthz /v1/me /v1/label/:address /v1/explain/:txHash /v1/cluster/:funder /v1/alerts /v1/alerts/stats`);
     console.log(`[api] API key ${config.apiKeys.length} 个（各 ${config.apiCredits} credits）`);
-    console.log(`[api] 收款地址 ${config.paymentAddress}；已从 ${deposits.length} 笔到账充值 ${creditedCount} 个付款地址`);
+    console.log(`[api] 收款地址 ${config.paymentAddress}；到账队列 ${inboxCount} 条（由 credit-daemon 维护，幂等并入账本）`);
   });
 
   // 优雅退出：SIGINT/SIGTERM 时先落盘 billing 再关闭服务

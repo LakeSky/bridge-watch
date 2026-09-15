@@ -7,6 +7,7 @@ import {
   saveDeposits,
 } from "./payment/deposits.js";
 import { formatUnits } from "./telegram.js";
+import { rawToCredits, isDustCredits, formatCredits } from "./payment/credit-math.js";
 
 /**
  * USDC 到账扫描 CLI。
@@ -33,13 +34,15 @@ async function main(): Promise<void> {
     console.log(`[payments] 无新到账，累计 ${all.length} 笔`);
   }
 
-  const unit = 10n ** BigInt(config.assetDecimals);
-  const creditByAddr = new Map<string, { usdc: bigint; credits: number }>();
+  const creditByAddr = new Map<string, { usdc: bigint; credits: number; dust: number }>();
   for (const d of all) {
     const key = d.from.toLowerCase();
-    const cur = creditByAddr.get(key) ?? { usdc: 0n, credits: 0 };
+    const cur = creditByAddr.get(key) ?? { usdc: 0n, credits: 0, dust: 0 };
     cur.usdc += d.amount;
-    cur.credits = Number((cur.usdc * BigInt(config.creditPerUsdc)) / unit);
+    // 逐笔换算再累加（与 credit-daemon 同一套精度规则，保留小数、不整数截断）
+    const c = rawToCredits(d.amount, config.assetDecimals, config.creditPerUsdc);
+    if (isDustCredits(c)) cur.dust++;
+    cur.credits = Number((cur.credits + c).toFixed(6));
     creditByAddr.set(key, cur);
   }
 
@@ -49,16 +52,18 @@ async function main(): Promise<void> {
     );
     for (const [addr, v] of creditByAddr) {
       console.log(
-        `  ${addr}: ${formatUnits(v.usdc, config.assetDecimals)} ${config.assetSymbol} -> ${v.credits} credits`,
+        `  ${addr}: ${formatUnits(v.usdc, config.assetDecimals)} ${config.assetSymbol} -> ${formatCredits(v.credits)} credits` +
+          (v.dust > 0 ? `（含 ${v.dust} 笔 dust，低于最小入账精度）` : ""),
       );
     }
   } else {
     console.log(`[payments] 暂无付款记录（历史余额可能早于扫描窗口）`);
   }
 
-  if (added.length > 0) {
-    console.log(`[payments] ⚠️ 新增到账需重启 API 服务才会计入可用额度`);
-  }
+  console.log(
+    `[payments] 提示：到账由 credit-daemon 幂等入队到 data/credits-inbox.json，` +
+      `API 请求时自动消费生效（无需重启）；本 CLI 仅用于人工核对。`,
+  );
 }
 
 main().catch((err) => {
