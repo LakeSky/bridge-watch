@@ -39,7 +39,36 @@
 不代表该笔能直接换来一次成功调用。
 
 **部署状态**：本地修复与测试已完成，随后执行"备份 → SFTP 覆盖 → pm2 restart → 公网验证 → 回填客户那笔"。
-线上结果见本条目末尾的追加行（若无追加行 = 尚未部署）。
+
+**部署结果（线上已上线，2026-09-15 09:50）**：
+- 目标：`47.84.59.104:/opt/bridge-watch`（**非 git 仓库**，pm2 用 `node_modules/.bin/tsx` 直跑 `src/*.ts`，无 dist → 上传源码即生效）。
+- 备份：被覆盖文件全部 `cp -p` 到 `/opt/bridge-watch/_bak/20260915_0920/`（上传前后 md5 已记录）；data 账本备份 `*.bak-fix2_*` / `*.bak-fix3_*`。
+- 上传 11 个文件（`credit-math.ts` / `scan-cursor.ts` / `deposits.ts` / `credit-daemon.ts` / `api/index.ts` / `payments.ts` + 4 个测试 + 本日志），
+  `pm2 restart bridge-watch-creditor bridge-watch-api` → 均 online；monitor 未动（代码未变）。
+- **首轮 tick（09:37:54）**：`块 51321463→51323463（链头 51323463，2 页）新到账 0 笔，入账队列 +1 条（+0.5 credits）`
+  —— 客户那笔 0.005 USDC（block 51313251，早已滑出旧 66 分钟窗口）**被自动回填入队**，历史漏单自愈逻辑实测生效。
+  `data/credits-inbox.json`、`data/scan-cursor.json` 首次生成（cursor.lastScannedBlock=51323463）。
+- **api 启动即消费队列**：`[billing] 自动入账 +0.5 credits → 0xe3badbd4…（tx 0x0e3c8b491d…）`；
+  `billing.json` 现含 `"0xe3badbd4f38214b9eae528a1a5398f6678f63fb3": 0.5` 与 `appliedTxs: ["0x0e3c8b491d…:945"]`。
+  **该客户的钱不再被静默吞掉**（但仍只有 0.5 credit < 1 credit/次调用，调用仍会 402，属预期）。
+- **公网验证**（https://agentsapi.top）：`/healthz` 200、`/statusz` 200、`/` 200、`/.well-known/x402` 200，
+  `/v1/me` 与 `/v1/label/:address`（无 key / 错误 key）仍稳定 401 → 鉴权与计费链路无回归。
+- **畸形 key 清理**：`billing.balances` 中 `"0x7 7 7 3 f 0 4 4 e…"`（值 0）与 `free-tier.granted` 中同形 key（值 = 一个历史时间戳）各 1 条已删除，
+  两文件清理后重载正常（billing 366B / free-tier 148B）。
+  ⚠️ **踩坑**：清理必须在 `pm2 stop bridge-watch-api` 之后执行——旧 api 收到 SIGINT 优雅退出时会把**内存态**账本落盘，
+  第一次在 api 运行中清理随即被原样覆盖回去（证据：`data/billing.json.bak-20260915_0920` 仍是脏版本）。
+- **畸形 key 根因（未改代码，仅记录）**：`src/api/server.ts:214` 直接把 `Authorization: Bearer <token>` 的 token 当作身份 key，
+  未做空白归一化；脏 key 来自**外部请求**把地址逐字符空格化后发来（服务端不存在拼接 bug）。
+  建议后续小增强：鉴权层对 key 执行 `trim` + 去除内部空白后再查账本（本次为控制改动面未做）。
+
+---
+
+### 2026-09-15 08:20 · [mavis-growth] · marvis-main正在修复credits-inbox bug + 客户来源确认
+
+**状态更新**：
+1. marvis-main 正在修复 credits-inbox.json 未生成的 bug（用户确认）
+2. 客户来源确认：通过 x402 协议发现（Agent402 crawler 扫描 /.well-known/x402），自动转了 0.005 USDC
+3. access 日志确认：客户地址 0xe3B... 尚未用 Bearer 调用 API，等 bug 修复后应自动入账
 
 ---
 
