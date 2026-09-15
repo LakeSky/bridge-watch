@@ -6,6 +6,33 @@
 
 ---
 
+### 2026-09-15 10:25 · [mavis-growth] · 启动第2个方向：bounty-hunter（开放任务市场微赏金）
+
+**决策**：bridge-watch 进入观察模式（48h 看客户是否回来），同时启动第2个方向。
+
+**方向**：Superteam Earn 内容类微赏金 Agent（PLAN 详见 `D:\ai\autoEarn\mavisCrypto\bounty-hunter\PLAN.md`）
+
+**为什么不是 Algora**：调研发现 Algora 已极度饱和——新赏金几小时内 8-158 个 agent PR 竞争，打速度战是输家。
+
+**为什么是 Superteam Earn**：
+- 内容类赏金 $50-700 USDC，竞争低（有的 listing 只有 2 个提交）
+- USDC 直接结算
+- 不需要和其他 agent 抢速度，比质量
+- 真实收入已被验证（有人 30 天赚 $500-800）
+
+**MVP**：48h 内完成 1 个赏金，拿第一笔 USDC。
+- 抓开放赏金 → 筛低竞争内容类 → LLM 生成 → 提交
+- 不碰 Algora、不做视频/设计、不做开发 PR
+
+**与 bridge-watch 完全独立**：不同目录、不同进程、不同钱包。bridge-watch 代码一行不碰。
+
+**待用户决策**：
+1. 方向是否 OK？
+2. 是否需要新建 Solana 实验钱包（收 USDC 用）？
+3. Superteam Earn 首次登录需要手动连钱包——什么时候方便？
+
+---
+
 ### 2026-09-15 10:15 · [mavis-growth] · 流量519 + 客户未复购 + P0 bug已修复确认
 
 **本轮状态**：
